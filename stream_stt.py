@@ -8,6 +8,13 @@ import sounddevice as sd
 from dotenv import load_dotenv
 from websockets.legacy.client import connect
 
+# Optional: type transcribed text into the focused window (e.g. search bar, text field)
+try:
+    import pyautogui
+    _CAN_TYPE = True
+except ImportError:
+    _CAN_TYPE = False
+
 # =====================
 # Config
 # =====================
@@ -27,7 +34,22 @@ CHUNK_SAMPLES = int(SAMPLE_RATE * CHUNK_MS / 1000)
 SILENCE_THRESHOLD = 0.01  # RMS threshold to detect silence
 SILENCE_LIMIT = 2.0       # seconds of silence before auto-stop
 
+# Type into focused window: set to False to only print in terminal
+TYPE_INTO_FOCUSED = True
+
+def _type_into_focused(text):
+    """Type text into whatever window/field currently has focus (e.g. search bar)."""
+    if not text or not _CAN_TYPE or not TYPE_INTO_FOCUSED:
+        return
+    try:
+        # interval=0.02 so the target app keeps up; use interval=0 for speed if needed
+        pyautogui.write(text, interval=0.02)
+    except Exception:
+        pass
+
 print("🔑 API key loaded")
+if not _CAN_TYPE and TYPE_INTO_FOCUSED:
+    print("   (Install pyautogui to type into focused field: pip install pyautogui)")
 print("🌐 Connecting to Gradium…")
 
 # =====================
@@ -80,7 +102,13 @@ async def send_audio(ws, closing_flag):
         blocksize=CHUNK_SAMPLES,
         callback=callback,
     ):
-        print(f"🎙️ Listening… (live transcript, auto-stop on {SILENCE_LIMIT}s silence)")
+        mode = "terminal + type into focused field" if (_CAN_TYPE and TYPE_INTO_FOCUSED) else "terminal only"
+        print(f"🎙️ Listening… ({mode}, auto-stop on {SILENCE_LIMIT}s silence)")
+        if _CAN_TYPE and TYPE_INTO_FOCUSED:
+            print("   👆 Click into a text field (e.g. search bar) and speak — text will be typed there.")
+            print("   (On macOS: grant Accessibility access to Terminal/Python if typing doesn't work.)")
+            print("   Starting in 2s…")
+            await asyncio.sleep(2)  # give time to focus the target field
         while not closing_flag.is_set():
             await asyncio.sleep(0.1)
 
@@ -112,12 +140,13 @@ async def receive_text(ws):
             print(f"\r🗣️ {full_line}{pad}", end="", flush=True)
 
         elif msg_type == "end_text":
-            # End of phrase: commit to transcript and print as new line
+            # End of phrase: commit to transcript, print, and type into focused field
             if current_phrase:
                 transcript.append(" ".join(current_phrase))
                 new_phrase = transcript[-1]
                 print(f"\r📝 {new_phrase}")  # overwrite partial line with final phrase
                 print()  # newline so next partial has its own line
+                _type_into_focused(new_phrase + " ")  # type where cursor is (e.g. search bar)
                 current_phrase = []
             last_line_len = 0
 
