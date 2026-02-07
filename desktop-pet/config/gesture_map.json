@@ -1,0 +1,12 @@
+[
+  {
+    "gesture": "blink_twice",
+    "action": "open_buddy",
+    "args": {}
+  },
+  {
+    "gesture": "hold",
+    "action": "typing",
+    "args": {}
+  }
+]
