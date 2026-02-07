@@ -1,0 +1,31 @@
+[gd_scene format=3 uid="uid://b3ld676vuag8m"]
+
+[ext_resource type="Script" uid="uid://dmre7arr5addw" path="res://PetRoot.gd" id="2_petroot"]
+[ext_resource type="PackedScene" uid="uid://cxoblm60eoahj" path="res://assets/coloured_pet.glb" id="3_i6as0"]
+[ext_resource type="Script" uid="uid://c7pq0wd2y73hv" path="res://WinHitTest.cs" id="3_winhittest"]
+
+[node name="PetRoot" type="Node3D" unique_id=899568679]
+script = ExtResource("2_petroot")
+
+[node name="WinHitTest" type="Node" parent="." unique_id=1515519135]
+script = ExtResource("3_winhittest")
+
+[node name="Camera3D" type="Camera3D" parent="." unique_id=1893954685]
+transform = Transform3D(0.9954196, 0, -0.095602535, 0, 1, 0, 0.095602535, 0, 0.9954196, 1.3162503, 1.8943124, 5.8228636)
+current = true
+fov = 80.384155
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1403652307]
+
+[node name="coloured_pet" parent="." unique_id=1297851617 instance=ExtResource("3_i6as0")]
+
+[node name="CUR-mouth" parent="coloured_pet" index="1" unique_id=1468301267]
+transform = Transform3D(2.4437904e-06, -7.3611736e-05, -1.0000001, -0.999999, 0.0014850497, -2.592802e-06, 0.0014851391, 0.9999989, -7.367134e-05, 0.0005367229, 2.276026, 0.8330613)
+
+[node name="CUR-eye_L" parent="coloured_pet" index="2" unique_id=609294090]
+transform = Transform3D(0.9541725, 0.29910266, 0.009612694, -0.035285532, 0.14434654, -0.98889786, -0.29716957, 0.94324, 0.14828551, 0.4428019, 2.6904538, 0.73079)
+
+[node name="CUR-eye_R" parent="coloured_pet" index="3" unique_id=1791777443]
+transform = Transform3D(0.96065956, -0.27767467, -0.005477816, 0.031247944, 0.12766343, -0.99132526, 0.2759652, 0.9521549, 0.13131785, -0.44351017, 2.690897, 0.74257225)
+
+[editable path="coloured_pet"]
