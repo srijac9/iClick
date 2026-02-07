@@ -1,0 +1,8 @@
+# Core (used by stream_stt.py)
+numpy
+sounddevice
+python-dotenv
+websockets
+
+# Type transcription into focused window (search bar, text field)
+pyautogui>=1.0.0
