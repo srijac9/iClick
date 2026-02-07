@@ -80,7 +80,7 @@ def _consume_future_exception(future):
         pass
 
 
-async def send_audio(ws, closing_flag):
+async def send_audio(ws, closing_flag, wake_word_said):
     loop = asyncio.get_running_loop()
     silence_time = 0.0
 
@@ -98,7 +98,8 @@ async def send_audio(ws, closing_flag):
         else:
             silence_time = 0.0
 
-        if silence_time >= SILENCE_LIMIT:
+        # Auto-stop on silence only after the wake word has been said
+        if silence_time >= SILENCE_LIMIT and wake_word_said.is_set():
             closing_flag.set()
             close_future = asyncio.run_coroutine_threadsafe(ws.close(), loop)
             close_future.add_done_callback(_consume_future_exception)
@@ -120,7 +121,7 @@ async def send_audio(ws, closing_flag):
         callback=callback,
     ):
         mode = "terminal + type into focused field" if (_CAN_TYPE and TYPE_INTO_FOCUSED) else "terminal only"
-        print(f"🎙️ Listening… ({mode}, auto-stop on {SILENCE_LIMIT}s silence)")
+        print(f"🎙️ Listening… ({mode}, auto-stop on {SILENCE_LIMIT}s silence after \"{WAKE_WORD.title()}\")")
         if _CAN_TYPE and TYPE_INTO_FOCUSED:
             print(f"   Say \"{WAKE_WORD.title()}\" then speak — text will be typed where your cursor is.")
             print("   👆 Click into a text field (e.g. search bar) first.")
@@ -134,7 +135,7 @@ async def send_audio(ws, closing_flag):
 # Receiver — live transcript display
 # Gradium uses "text" (recognized words) and "end_text" (end of phrase)
 # =====================
-async def receive_text(ws):
+async def receive_text(ws, wake_word_said):
     transcript = []
     current_phrase = []  # Words in current phrase
     last_line_len = 0
@@ -156,6 +157,7 @@ async def receive_text(ws):
             full_line = " ".join(transcript) + (" " if transcript else "") + " ".join(current_phrase)
             if not wake_word_detected and WAKE_WORD in _normalize(full_line):
                 wake_word_detected = True
+                wake_word_said.set()  # Allow auto-stop on silence from now on
             pad = " " * max(0, last_line_len - len(full_line))
             last_line_len = len(full_line)
             print(f"\r🗣️ {full_line}{pad}", end="", flush=True)
@@ -166,6 +168,7 @@ async def receive_text(ws):
                 new_phrase = " ".join(current_phrase)
                 if not wake_word_detected and WAKE_WORD in _normalize(new_phrase):
                     wake_word_detected = True
+                    wake_word_said.set()  # Allow auto-stop on silence from now on
                 transcript.append(new_phrase)
                 print(f"\r📝 {new_phrase}")  # overwrite partial line with final phrase
                 print()  # newline so next partial has its own line
@@ -182,6 +185,7 @@ async def receive_text(ws):
 # =====================
 async def main():
     closing_flag = asyncio.Event()
+    wake_word_said = asyncio.Event()  # Set when "Hey, buddy" is heard; enables auto-stop on silence
 
     async with connect(
         WS_URL,
@@ -203,8 +207,8 @@ async def main():
         # Run sender and receiver concurrently
         try:
             await asyncio.gather(
-                send_audio(ws, closing_flag),
-                receive_text(ws)
+                send_audio(ws, closing_flag, wake_word_said),
+                receive_text(ws, wake_word_said)
             )
         except Exception:
             pass  # Connection closed (e.g. after silence) — exit cleanly
