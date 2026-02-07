@@ -211,23 +211,68 @@ def main():
 
     def run_action(key: str):
         action = ACTIONS.get(key)
+class GestureController:
+    def __init__(self, camera_index=0, show_debug=True, show_window=False):
+        self.cap = cv2.VideoCapture(camera_index)
+        if not self.cap.isOpened():
+            raise RuntimeError("Could not open webcam. Try changing VideoCapture index (0/1/2).")
+
+        self.show_debug = show_debug
+        self.show_window = show_window
+
+        # Tunable parameters
+        self.ear_threshold = 0.21
+        self.consec_frames = 2
+        self.click_cooldown = 0.5
+        self.hold_seconds = 0.7
+        self.double_blink_window = 0.8
+
+        # State
+        self.frames_below = 0
+        self.blink_in_progress = False
+        self.blink_count = 0
+        self.last_blink_time = 0.0
+        self.closed_start = None
+        self.hold_fired = False
+        self.last_action_time = 0.0
+
+        self.open_palm_active = False
+        self.stt_proc = None
+
+        # Action map (customizable)
+        self.actions = {
+            "double_blink": left_click,
+            "blink_hold": right_click,
+            "open_palm": "start_stt",
+            "wave": None,
+        }
+
+        def _noop():
+            return None
+
+        def _handle_start_stt():
+            self.stt_proc = start_stt(self.stt_proc)
+
+        self.dispatch = {
+            "start_stt": _handle_start_stt,
+            "noop": _noop,
+        }
+
+    def run_action(self, key: str):
+        action = self.actions.get(key)
         if action is None:
             return
         if callable(action):
             action()
             return
-        # Resolve string actions via DISPATCH
-        handler = DISPATCH.get(action)
+        handler = self.dispatch.get(action)
         if handler:
             handler()
 
-    fps_t = time.time()
-    fps = 0.0
-
-    while True:
-        ok, frame = cap.read()
+    def step(self):
+        ok, frame = self.cap.read()
         if not ok:
-            break
+            return False
 
         frame = cv2.flip(frame, 1)
         h, w = frame.shape[:2]
@@ -240,6 +285,7 @@ def main():
 
         ear = None
         is_open_palm = False
+        gesture_active = False
 
         if face_results.multi_face_landmarks:
             face_landmarks = face_results.multi_face_landmarks[0].landmark
@@ -249,37 +295,38 @@ def main():
             right_ear = eye_aspect_ratio(pts, RIGHT_EYE)
             ear = (left_ear + right_ear) / 2.0
 
-            if ear < EAR_THRESHOLD:
-                frames_below += 1
-                if closed_start is None:
-                    closed_start = time.time()
-                if frames_below >= CONSEC_FRAMES and not blink_in_progress:
-                    blink_in_progress = True
+            if ear < self.ear_threshold:
+                self.frames_below += 1
+                gesture_active = True
+                if self.closed_start is None:
+                    self.closed_start = time.time()
+                if self.frames_below >= self.consec_frames and not self.blink_in_progress:
+                    self.blink_in_progress = True
                     now = time.time()
                     # Double-blink detection
-                    if now - last_blink_time <= DOUBLE_BLINK_WINDOW:
-                        blink_count += 1
+                    if now - self.last_blink_time <= self.double_blink_window:
+                        self.blink_count += 1
                     else:
-                        blink_count = 1
-                    last_blink_time = now
+                        self.blink_count = 1
+                    self.last_blink_time = now
 
-                    if blink_count >= 2 and (now - last_action_time >= CLICK_COOLDOWN):
-                        run_action("double_blink")
-                        last_action_time = now
-                        blink_count = 0
+                    if self.blink_count >= 2 and (now - self.last_action_time >= self.click_cooldown):
+                        self.run_action("double_blink")
+                        self.last_action_time = now
+                        self.blink_count = 0
                 # Hold detection
-                if not hold_fired and closed_start and (time.time() - closed_start) >= HOLD_SECONDS:
-                    if (time.time() - last_action_time) >= CLICK_COOLDOWN:
-                        run_action("blink_hold")
-                        last_action_time = time.time()
-                    hold_fired = True
+                if not self.hold_fired and self.closed_start and (time.time() - self.closed_start) >= self.hold_seconds:
+                    if (time.time() - self.last_action_time) >= self.click_cooldown:
+                        self.run_action("blink_hold")
+                        self.last_action_time = time.time()
+                    self.hold_fired = True
             else:
-                frames_below = 0
-                blink_in_progress = False
-                closed_start = None
-                hold_fired = False
+                self.frames_below = 0
+                self.blink_in_progress = False
+                self.closed_start = None
+                self.hold_fired = False
 
-            if SHOW_DEBUG:
+            if self.show_debug:
                 for idx in LEFT_EYE + RIGHT_EYE:
                     x, y = pts[idx].astype(int)
                     cv2.circle(frame, (x, y), 2, (0, 255, 0), -1)
@@ -302,44 +349,44 @@ def main():
 
             if extended >= 3 and thumb_extended:
                 is_open_palm = True
+                gesture_active = True
 
-            if SHOW_DEBUG:
+            if self.show_debug:
                 for p in pts:
                     cv2.circle(frame, (int(p[0]), int(p[1])), 2, (0, 255, 0), -1)
 
-        if is_open_palm and not open_palm_active:
-            run_action("open_palm")
-        open_palm_active = is_open_palm
+        if is_open_palm and not self.open_palm_active:
+            self.run_action("open_palm")
+        self.open_palm_active = is_open_palm
 
-        now = time.time()
-        dt = now - fps_t
-        if dt > 0:
-            fps = 1.0 / dt
-        fps_t = now
-
-        if SHOW_DEBUG:
-            if ear is not None:
-                cv2.putText(frame, f"EAR: {ear:.3f} (thr={EAR_THRESHOLD:.2f})", (20, 40),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-            cv2.putText(frame, f"Open Palm: {'YES' if is_open_palm else 'NO'}", (20, 80),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-            cv2.putText(frame, f"FPS: {fps:.1f}", (20, 120),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-
-        if SHOW_WINDOW:
+        if self.show_window:
             cv2.imshow("Shortcut Controller (press q to quit)", frame)
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q'):
-                break
+                raise KeyboardInterrupt()
         else:
             time.sleep(0.01)
 
-    cap.release()
-    if SHOW_WINDOW:
-        cv2.destroyAllWindows()
+        return gesture_active
 
-    if stt_proc and stt_proc.poll() is None:
-        stt_proc.terminate()
+    def close(self):
+        if self.cap:
+            self.cap.release()
+        if self.show_window:
+            cv2.destroyAllWindows()
+        if self.stt_proc and self.stt_proc.poll() is None:
+            self.stt_proc.terminate()
+
+
+def main():
+    controller = GestureController(show_debug=True, show_window=False)
+    try:
+        while True:
+            controller.step()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        controller.close()
 
 
 if __name__ == "__main__":
