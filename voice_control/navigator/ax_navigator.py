@@ -34,6 +34,11 @@ def _run_osascript(script: str):
 def _open_chrome():
     return _run_osascript('tell application "Google Chrome" to activate')
 
+def _new_tab():
+    return _run_osascript(
+        'tell application "System Events" to keystroke "t" using command down'
+    )
+
 
 def _chrome_pid():
     try:
@@ -82,10 +87,12 @@ def _focus_address_bar():
                         try:
                             AXUIElementSetAttributeValue(el, kAXFocusedAttribute, True)
                             AXUIElementPerformAction(el, kAXPressAction)
+                            _move_to_address_bar_fallback()
                             return True
                         except Exception:
                             pass
     # Fallback: use keyboard shortcut to focus address bar.
+    _move_to_address_bar_fallback()
     return _run_osascript(
         'tell application "System Events" to keystroke "l" using command down'
     )
@@ -97,6 +104,38 @@ def _type_and_enter(text: str):
         f'tell application "System Events" to keystroke "{escaped}"\n'
         'tell application "System Events" to key code 36'
     )
+
+
+def _chrome_window_bounds():
+    script = (
+        'tell application "Google Chrome"\n'
+        "  set b to bounds of front window\n"
+        "end tell\n"
+        "return b\n"
+    )
+    try:
+        out = subprocess.check_output(["osascript", "-e", script])
+        # Output like: 0, 23, 1440, 900
+        parts = [p.strip() for p in out.decode().split(",")]
+        if len(parts) != 4:
+            return None
+        return tuple(int(p) for p in parts)
+    except Exception:
+        return None
+
+
+def _move_to_address_bar_fallback():
+    # Move cursor to a likely address bar location for visible motion.
+    b = _chrome_window_bounds()
+    if not b:
+        return False
+    x1, y1, x2, y2 = b
+    # Heuristic: address bar roughly near top-left, a bit inset.
+    x = x1 + 200
+    y = y1 + 55
+    pyautogui.moveTo(x, y, duration=0.3)
+    pyautogui.click()
+    return True
 
 
 def _click_first_google_result():
@@ -161,6 +200,8 @@ def _get_first_result_center():
 def _open_gmail_flow():
     _open_chrome()
     time.sleep(1.2)
+    _new_tab()
+    time.sleep(0.2)
     _focus_address_bar()
     time.sleep(0.1)
     _type_and_enter("gmail")
@@ -178,6 +219,8 @@ def run_accessibility_open(target: str):
     # Generic flow: open Chrome, search target, click first result.
     _open_chrome()
     time.sleep(1.0)
+    _new_tab()
+    time.sleep(0.2)
     _focus_address_bar()
     time.sleep(0.1)
     _type_and_enter(target)

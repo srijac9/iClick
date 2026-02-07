@@ -113,23 +113,28 @@ async def send_audio(ws, closing_flag, wake_word_said):
         future = asyncio.run_coroutine_threadsafe(ws.send(msg), loop)
         future.add_done_callback(_consume_future_exception)
 
-    with sd.InputStream(
-        samplerate=SAMPLE_RATE,
-        channels=CHANNELS,
-        dtype=DTYPE,
-        blocksize=CHUNK_SAMPLES,
-        callback=callback,
-    ):
-        mode = "terminal + type into focused field" if (_CAN_TYPE and TYPE_INTO_FOCUSED) else "terminal only"
-        print(f"🎙️ Listening… ({mode}, auto-stop on {SILENCE_LIMIT}s silence after \"{WAKE_WORD.title()}\")")
-        if _CAN_TYPE and TYPE_INTO_FOCUSED:
-            print(f"   Say \"{WAKE_WORD.title()}\" then speak — text will be typed where your cursor is.")
-            print("   👆 Click into a text field (e.g. search bar) first.")
-            print("   (On macOS: grant Accessibility access to Terminal/Python if typing doesn't work.)")
-            print("   Starting in 2s…")
-            await asyncio.sleep(2)  # give time to focus the target field
-        while not closing_flag.is_set():
-            await asyncio.sleep(0.1)
+    while not closing_flag.is_set():
+        try:
+            with sd.InputStream(
+                samplerate=SAMPLE_RATE,
+                channels=CHANNELS,
+                dtype=DTYPE,
+                blocksize=CHUNK_SAMPLES,
+                callback=callback,
+            ):
+                mode = "terminal + type into focused field" if (_CAN_TYPE and TYPE_INTO_FOCUSED) else "terminal only"
+                print(f"🎙️ Listening… ({mode}, auto-stop on {SILENCE_LIMIT}s silence after \"{WAKE_WORD.title()}\")")
+                if _CAN_TYPE and TYPE_INTO_FOCUSED:
+                    print(f"   Say \"{WAKE_WORD.title()}\" then speak — text will be typed where your cursor is.")
+                    print("   👆 Click into a text field (e.g. search bar) first.")
+                    print("   (On macOS: grant Accessibility access to Terminal/Python if typing doesn't work.)")
+                    print("   Starting in 2s…")
+                    await asyncio.sleep(2)  # give time to focus the target field
+                while not closing_flag.is_set():
+                    await asyncio.sleep(0.1)
+        except Exception as e:
+            print(f"❌ Audio input error: {e}")
+            await asyncio.sleep(1.0)
 
 # =====================
 # Receiver — live transcript display
