@@ -5,12 +5,12 @@ import socket
 from pathlib import Path
 
 # ======== EDIT THESE PATHS ========
-BASE_DIR = Path(r"C:\Users\srich\iClick")
+BASE_DIR = Path(r"C:\Users\srich\iClick\desktop-pet")
 
 WS_RELAY = BASE_DIR / "ws_relay.py"
 APP_CONTROLLER = BASE_DIR / "app_controller.py"
 
-PET_EXE = Path(r"C:\Users\srich\iClick\desktop-pet\desktop_pet.exe")
+PET_EXE = BASE_DIR / "desktop_pet.exe"
 # =================================
 
 HOST = "127.0.0.1"
