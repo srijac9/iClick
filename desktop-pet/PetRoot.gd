@@ -4,6 +4,10 @@ var ws := WebSocketPeer.new()
 var url := "ws://127.0.0.1:8765/pet"
 
 var vx := 0.0
+var last_launch_ms := 0
+
+const CONFIG_APP_REL := "res://config_app.py"
+const LAUNCH_DEBOUNCE_MS := 800
 
 @export var model_path: NodePath
 @onready var model: Node3D = get_node_or_null(model_path)
@@ -53,6 +57,35 @@ func _process(dt):
 
 	position.x += vx * dt
 	_apply_idle(dt)
+
+func _unhandled_input(event):
+	if event is InputEventMouseButton and event.pressed:
+		if event.button_index == MOUSE_BUTTON_LEFT:
+			_log_click()
+			_launch_config_app()
+
+func _log_click():
+	var ts = Time.get_datetime_string_from_system()
+	var msg = "[pet] click detected at " + ts
+	print(msg)
+	var f = FileAccess.open("user://pet_clicks.txt", FileAccess.READ_WRITE)
+	if f:
+		f.seek_end()
+		f.store_line(msg)
+		f.close()
+
+func _launch_config_app():
+	var now = Time.get_ticks_msec()
+	if now - last_launch_ms < LAUNCH_DEBOUNCE_MS:
+		return
+	last_launch_ms = now
+
+	var script_path = ProjectSettings.globalize_path(CONFIG_APP_REL)
+	var pid = OS.create_process("python", [script_path])
+	if pid == -1:
+		pid = OS.create_process("py", [script_path])
+		if pid == -1:
+			push_warning("Failed to launch config app. Ensure Python is on PATH.")
 
 func _apply_idle(dt):
 	if not idle_target:

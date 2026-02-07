@@ -1,9 +1,12 @@
 import cv2
 import time
 import sys
+import os
+import json
 import subprocess
 import numpy as np
 import mediapipe as mp
+from pathlib import Path
 
 from cursor_actions.functions import left_click, right_click
 
@@ -14,6 +17,9 @@ from cursor_actions.functions import left_click, right_click
 # - Open palm -> start STT typing (stream_stt.py)
 # - Hand wave -> no action (placeholder)
 # -----------------------------
+
+BASE_DIR = Path(__file__).resolve().parent
+CONFIG_PATH = BASE_DIR / "desktop-pet" / "config" / "gesture_map.json"
 
 mp_face_mesh = mp.solutions.face_mesh
 face_mesh = mp_face_mesh.FaceMesh(
@@ -80,6 +86,131 @@ def start_stt(stt_proc):
         return stt_proc
 
 
+def _load_action_map():
+    if not CONFIG_PATH.exists():
+        return {}
+    try:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, list):
+            return {}
+        out = {}
+        for item in data:
+            gesture = item.get("gesture")
+            action = item.get("action")
+            if gesture and action:
+                out[gesture] = action
+        return out
+    except Exception:
+        return {}
+
+
+def _resolve_action(action_key):
+    if action_key == "left_click":
+        return left_click
+    if action_key == "right_click":
+        return right_click
+    if action_key == "typing":
+        return "start_stt"
+    if action_key == "open_buddy":
+        return "open_buddy"
+    return None
+
+
+def main():
+    cap = cv2.VideoCapture(0)
+    if not cap.isOpened():
+        raise RuntimeError("Could not open webcam. Try changing VideoCapture index (0/1/2).")
+
+    # ---- Tunable parameters ----
+    EAR_THRESHOLD = 0.21
+    CONSEC_FRAMES = 2
+    CLICK_COOLDOWN = 0.5
+    HOLD_SECONDS = 0.7
+    DOUBLE_BLINK_WINDOW = 0.8
+    SHOW_DEBUG = True
+    SHOW_WINDOW = True
+
+    frames_below = 0
+    blink_in_progress = False
+    blink_count = 0
+    last_blink_time = 0.0
+    closed_start = None
+    hold_fired = False
+    last_action_time = 0.0
+
+    open_palm_active = False
+    stt_proc = None
+
+    # Action map (customizable)
+    # Values can be callables or string keys resolved by DISPATCH.
+    ACTIONS = {
+        "double_blink": left_click,
+        "blink_hold": right_click,
+        "open_palm": "start_stt",
+        "wave": None,
+    }
+
+    # Override from config app if present.
+    configured = _load_action_map()
+    if configured:
+        for gesture, action_key in configured.items():
+            # Map UI gesture labels to controller keys.
+            if gesture == "blink_twice":
+                gesture = "double_blink"
+            elif gesture == "hold":
+                gesture = "blink_hold"
+            ACTIONS[gesture] = _resolve_action(action_key)
+
+    log_path = BASE_DIR / "shortcuts_log.txt"
+    print("[shortcuts] ACTIONS map:", flush=True)
+    try:
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write("[shortcuts] ACTIONS map:\n")
+    except Exception:
+        pass
+    for k, v in ACTIONS.items():
+        if callable(v):
+            name = getattr(v, "__name__", "callable")
+            line = f"  {k}: {name}"
+            print(line, flush=True)
+            try:
+                with open(log_path, "a", encoding="utf-8") as f:
+                    f.write(line + "\n")
+            except Exception:
+                pass
+        else:
+            line = f"  {k}: {v}"
+            print(line, flush=True)
+            try:
+                with open(log_path, "a", encoding="utf-8") as f:
+                    f.write(line + "\n")
+            except Exception:
+                pass
+
+    def _noop():
+        return None
+
+    def _handle_start_stt():
+        nonlocal stt_proc
+        stt_proc = start_stt(stt_proc)
+
+    def _handle_open_buddy():
+        app_path = BASE_DIR / "desktop-pet" / "config_app.py"
+        if app_path.exists():
+            try:
+                subprocess.Popen([sys.executable, str(app_path)])
+            except Exception:
+                return
+
+    DISPATCH = {
+        "start_stt": _handle_start_stt,
+        "open_buddy": _handle_open_buddy,
+        "noop": _noop,
+    }
+
+    def run_action(key: str):
+        action = ACTIONS.get(key)
 class GestureController:
     def __init__(self, camera_index=0, show_debug=True, show_window=False):
         self.cap = cv2.VideoCapture(camera_index)
