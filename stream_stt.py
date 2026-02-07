@@ -37,6 +37,23 @@ SILENCE_LIMIT = 2.0       # seconds of silence before auto-stop
 # Type into focused window: set to False to only print in terminal
 TYPE_INTO_FOCUSED = True
 
+# Only start typing into focused field after this wake word is said (case-insensitive)
+WAKE_WORD = "hey buddy"
+
+
+def _normalize(text):
+    """Lowercase and collapse spaces for wake-word matching."""
+    return " ".join((text or "").lower().split())
+
+
+def _strip_wake_word_from_start(phrase):
+    """If phrase starts with the wake word, return the rest; else return phrase."""
+    n = _normalize(phrase)
+    if n.startswith(WAKE_WORD):
+        return n[len(WAKE_WORD):].strip()
+    return phrase
+
+
 def _type_into_focused(text):
     """Type text into whatever window/field currently has focus (e.g. search bar)."""
     if not text or not _CAN_TYPE or not TYPE_INTO_FOCUSED:
@@ -105,7 +122,8 @@ async def send_audio(ws, closing_flag):
         mode = "terminal + type into focused field" if (_CAN_TYPE and TYPE_INTO_FOCUSED) else "terminal only"
         print(f"🎙️ Listening… ({mode}, auto-stop on {SILENCE_LIMIT}s silence)")
         if _CAN_TYPE and TYPE_INTO_FOCUSED:
-            print("   👆 Click into a text field (e.g. search bar) and speak — text will be typed there.")
+            print(f"   Say \"{WAKE_WORD.title()}\" then speak — text will be typed where your cursor is.")
+            print("   👆 Click into a text field (e.g. search bar) first.")
             print("   (On macOS: grant Accessibility access to Terminal/Python if typing doesn't work.)")
             print("   Starting in 2s…")
             await asyncio.sleep(2)  # give time to focus the target field
@@ -120,6 +138,7 @@ async def receive_text(ws):
     transcript = []
     current_phrase = []  # Words in current phrase
     last_line_len = 0
+    wake_word_detected = False  # Only type into focused field after "Hey, buddy"
 
     async for message in ws:
         raw = message if isinstance(message, str) else message.decode("utf-8", errors="ignore")
@@ -135,18 +154,26 @@ async def receive_text(ws):
             # Live transcript: each word/phrase as it's recognized
             current_phrase.append(text)
             full_line = " ".join(transcript) + (" " if transcript else "") + " ".join(current_phrase)
+            if not wake_word_detected and WAKE_WORD in _normalize(full_line):
+                wake_word_detected = True
             pad = " " * max(0, last_line_len - len(full_line))
             last_line_len = len(full_line)
             print(f"\r🗣️ {full_line}{pad}", end="", flush=True)
 
         elif msg_type == "end_text":
-            # End of phrase: commit to transcript, print, and type into focused field
+            # End of phrase: commit to transcript, print, and maybe type into focused field
             if current_phrase:
-                transcript.append(" ".join(current_phrase))
-                new_phrase = transcript[-1]
+                new_phrase = " ".join(current_phrase)
+                if not wake_word_detected and WAKE_WORD in _normalize(new_phrase):
+                    wake_word_detected = True
+                transcript.append(new_phrase)
                 print(f"\r📝 {new_phrase}")  # overwrite partial line with final phrase
                 print()  # newline so next partial has its own line
-                _type_into_focused(new_phrase + " ")  # type where cursor is (e.g. search bar)
+                # Type into focused field only after wake word; don't type the wake word itself
+                if wake_word_detected:
+                    to_type = _strip_wake_word_from_start(new_phrase)
+                    if to_type:
+                        _type_into_focused(to_type + " ")
                 current_phrase = []
             last_line_len = 0
 
