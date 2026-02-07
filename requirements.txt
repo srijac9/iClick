@@ -3,6 +3,8 @@ numpy
 sounddevice
 python-dotenv
 websockets
+joblib
+scikit-learn
 
 # Type transcription into focused window (search bar, text field)
 pyautogui>=0.9.0

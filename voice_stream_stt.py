@@ -2,6 +2,7 @@ import asyncio
 import base64
 import json
 import os
+import subprocess
 import sys
 import numpy as np
 import sounddevice as sd
@@ -37,22 +38,6 @@ SILENCE_LIMIT = 2.0       # seconds of silence before auto-stop
 # Type into focused window: set to False to only print in terminal
 TYPE_INTO_FOCUSED = True
 
-# Only start typing into focused field after this wake word is said (case-insensitive)
-WAKE_WORD = "hey buddy"
-
-
-def _normalize(text):
-    """Lowercase and collapse spaces for wake-word matching."""
-    return " ".join((text or "").lower().split())
-
-
-def _strip_wake_word_from_start(phrase):
-    """If phrase starts with the wake word, return the rest; else return phrase."""
-    n = _normalize(phrase)
-    if n.startswith(WAKE_WORD):
-        return n[len(WAKE_WORD):].strip()
-    return phrase
-
 
 def _type_into_focused(text):
     """Type text into whatever window/field currently has focus (e.g. search bar)."""
@@ -61,6 +46,16 @@ def _type_into_focused(text):
     try:
         # interval=0.02 so the target app keeps up; use interval=0 for speed if needed
         pyautogui.write(text, interval=0.02)
+        return
+    except Exception:
+        pass
+    # Fallback: use AppleScript to type (requires Accessibility permissions)
+    try:
+        escaped = text.replace('"', '\\"')
+        subprocess.run(
+            ["osascript", "-e", f'tell application "System Events" to keystroke "{escaped}"'],
+            check=False,
+        )
     except Exception:
         pass
 
@@ -80,7 +75,7 @@ def _consume_future_exception(future):
         pass
 
 
-async def send_audio(ws, closing_flag, wake_word_said):
+async def send_audio(ws, closing_flag):
     loop = asyncio.get_running_loop()
     silence_time = 0.0
 
@@ -98,8 +93,8 @@ async def send_audio(ws, closing_flag, wake_word_said):
         else:
             silence_time = 0.0
 
-        # Auto-stop on silence only after the wake word has been said
-        if silence_time >= SILENCE_LIMIT and wake_word_said.is_set():
+        # Auto-stop on silence
+        if silence_time >= SILENCE_LIMIT:
             closing_flag.set()
             close_future = asyncio.run_coroutine_threadsafe(ws.close(), loop)
             close_future.add_done_callback(_consume_future_exception)
@@ -113,39 +108,32 @@ async def send_audio(ws, closing_flag, wake_word_said):
         future = asyncio.run_coroutine_threadsafe(ws.send(msg), loop)
         future.add_done_callback(_consume_future_exception)
 
-    while not closing_flag.is_set():
-        try:
-            with sd.InputStream(
-                samplerate=SAMPLE_RATE,
-                channels=CHANNELS,
-                dtype=DTYPE,
-                blocksize=CHUNK_SAMPLES,
-                callback=callback,
-            ):
-                mode = "terminal + type into focused field" if (_CAN_TYPE and TYPE_INTO_FOCUSED) else "terminal only"
-                print(f"🎙️ Listening… ({mode}, auto-stop on {SILENCE_LIMIT}s silence after \"{WAKE_WORD.title()}\")")
-                if _CAN_TYPE and TYPE_INTO_FOCUSED:
-                    print(f"   Say \"{WAKE_WORD.title()}\" then speak — text will be typed where your cursor is.")
-                    print("   👆 Click into a text field (e.g. search bar) first.")
-                    print("   (On macOS: grant Accessibility access to Terminal/Python if typing doesn't work.)")
-                    print("   Starting in 2s…")
-                    await asyncio.sleep(2)  # give time to focus the target field
-                while not closing_flag.is_set():
-                    await asyncio.sleep(0.1)
-        except Exception as e:
-            print(f"❌ Audio input error: {e}")
-            await asyncio.sleep(1.0)
+    with sd.InputStream(
+        samplerate=SAMPLE_RATE,
+        channels=CHANNELS,
+        dtype=DTYPE,
+        blocksize=CHUNK_SAMPLES,
+        callback=callback,
+    ):
+        mode = "terminal + type into focused field" if (_CAN_TYPE and TYPE_INTO_FOCUSED) else "terminal only"
+        print(f"🎙️ Listening… ({mode}, auto-stop on {SILENCE_LIMIT}s silence after \"{WAKE_WORD.title()}\")")
+        if _CAN_TYPE and TYPE_INTO_FOCUSED:
+            print(f"   Say \"{WAKE_WORD.title()}\" then speak — text will be typed where your cursor is.")
+            print("   👆 Click into a text field (e.g. search bar) first.")
+            print("   (On macOS: grant Accessibility access to Terminal/Python if typing doesn't work.)")
+            print("   Starting in 2s…")
+            await asyncio.sleep(2)  # give time to focus the target field
+        while not closing_flag.is_set():
+            await asyncio.sleep(0.1)
 
 # =====================
 # Receiver — live transcript display
 # Gradium uses "text" (recognized words) and "end_text" (end of phrase)
 # =====================
-async def receive_text(ws, wake_word_said):
+async def receive_text(ws):
     transcript = []
     current_phrase = []  # Words in current phrase
     last_line_len = 0
-    wake_word_detected = False  # Only type into focused field after "Hey, buddy"
-
     async for message in ws:
         raw = message if isinstance(message, str) else message.decode("utf-8", errors="ignore")
         try:
@@ -160,9 +148,6 @@ async def receive_text(ws, wake_word_said):
             # Live transcript: each word/phrase as it's recognized
             current_phrase.append(text)
             full_line = " ".join(transcript) + (" " if transcript else "") + " ".join(current_phrase)
-            if not wake_word_detected and WAKE_WORD in _normalize(full_line):
-                wake_word_detected = True
-                wake_word_said.set()  # Allow auto-stop on silence from now on
             pad = " " * max(0, last_line_len - len(full_line))
             last_line_len = len(full_line)
             print(f"\r🗣️ {full_line}{pad}", end="", flush=True)
@@ -171,17 +156,12 @@ async def receive_text(ws, wake_word_said):
             # End of phrase: commit to transcript, print, and maybe type into focused field
             if current_phrase:
                 new_phrase = " ".join(current_phrase)
-                if not wake_word_detected and WAKE_WORD in _normalize(new_phrase):
-                    wake_word_detected = True
-                    wake_word_said.set()  # Allow auto-stop on silence from now on
                 transcript.append(new_phrase)
                 print(f"\r📝 {new_phrase}")  # overwrite partial line with final phrase
                 print()  # newline so next partial has its own line
-                # Type into focused field only after wake word; don't type the wake word itself
-                if wake_word_detected:
-                    to_type = _strip_wake_word_from_start(new_phrase)
-                    if to_type:
-                        _type_into_focused(to_type + " ")
+                # Type into focused field immediately
+                if new_phrase:
+                    _type_into_focused(new_phrase + " ")
                 current_phrase = []
             last_line_len = 0
 
@@ -190,8 +170,6 @@ async def receive_text(ws, wake_word_said):
 # =====================
 async def main():
     closing_flag = asyncio.Event()
-    wake_word_said = asyncio.Event()  # Set when "Hey, buddy" is heard; enables auto-stop on silence
-
     async with connect(
         WS_URL,
         extra_headers=[("x-api-key", API_KEY)],
@@ -212,8 +190,8 @@ async def main():
         # Run sender and receiver concurrently
         try:
             await asyncio.gather(
-                send_audio(ws, closing_flag, wake_word_said),
-                receive_text(ws, wake_word_said)
+                send_audio(ws, closing_flag),
+                receive_text(ws)
             )
         except Exception:
             pass  # Connection closed (e.g. after silence) — exit cleanly
