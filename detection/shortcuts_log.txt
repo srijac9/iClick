@@ -1,0 +1,10 @@
+[shortcuts] ACTIONS map:
+  blink_twice: left_click
+  hold: right_click
+  open_palm: open_buddy
+  wave: start_stt
+[shortcuts] ACTIONS map:
+  blink_twice: open_buddy
+  hold: start_stt
+  open_palm: left_click
+  wave: None

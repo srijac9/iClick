@@ -125,9 +125,6 @@ async def main():
                         await asyncio.sleep(0.1)
                         if state["had_text"] and (time.time() - state["last_text_time"]) >= SILENCE_LIMIT:
                             print(f"⏹️ Auto-stop after {SILENCE_LIMIT:.1f}s silence", flush=True)
-                            if state["last_committed"]:
-                                # Re-emit last committed line so downstream triggers before close.
-                                print(f"🗣️ {state['last_committed']}", flush=True)
                             await ws.close()
                             return
 
