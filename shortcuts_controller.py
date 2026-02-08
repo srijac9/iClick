@@ -239,12 +239,15 @@ class GestureController:
         self.open_palm_active = False
         self.stt_proc = None
         self._config_mtime = None
+        self.peace_active = False
+        self.eleven_proc = None
 
         # Action map (customizable)
         self.actions = {
             "double_blink": left_click,
             "blink_hold": right_click,
             "open_palm": "start_stt",
+            "peace": "start_eleven",
             "wave": None,
         }
 
@@ -265,6 +268,25 @@ class GestureController:
         self.dispatch = {
             "start_stt": _handle_start_stt,
             "open_buddy": _handle_open_buddy,
+        def _handle_start_eleven():
+            if self.eleven_proc and self.eleven_proc.poll() is None:
+                return
+            cmd = (
+                "source .env && "
+                "python -u eleven_stt.py | tee /dev/tty | python -u voice_control/run_from_stt.py"
+            )
+            try:
+                self.eleven_proc = subprocess.Popen(
+                    ["/bin/bash", "-lc", cmd],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            except Exception:
+                return
+
+        self.dispatch = {
+            "start_stt": _handle_start_stt,
+            "start_eleven": _handle_start_eleven,
             "noop": _noop,
         }
 
@@ -309,6 +331,11 @@ class GestureController:
 
     def step(self):
         self._apply_config()
+        # If any audio pipeline is active, do not detect/trigger gestures.
+        if self.is_stt_active() or self.is_eleven_active():
+            time.sleep(0.01)
+            return True
+
         ok, frame = self.cap.read()
         if not ok:
             return False
@@ -324,6 +351,7 @@ class GestureController:
 
         ear = None
         is_open_palm = False
+        is_peace = False
         gesture_active = False
 
         if face_results.multi_face_landmarks:
@@ -389,6 +417,15 @@ class GestureController:
             if extended >= 3 and thumb_extended:
                 is_open_palm = True
                 gesture_active = True
+            # Peace sign: index+middle extended, ring+pinky not, thumb either.
+            if (
+                is_finger_extended(pts, 8, 6, 5)
+                and is_finger_extended(pts, 12, 10, 9)
+                and not is_finger_extended(pts, 16, 14, 13)
+                and not is_finger_extended(pts, 20, 18, 17)
+            ):
+                is_peace = True
+                gesture_active = True
 
             if self.show_debug:
                 for p in pts:
@@ -397,6 +434,9 @@ class GestureController:
         if is_open_palm and not self.open_palm_active:
             self.run_action("open_palm")
         self.open_palm_active = is_open_palm
+        if is_peace and not self.peace_active:
+            self.run_action("peace")
+        self.peace_active = is_peace
 
         if self.show_window:
             cv2.imshow("Shortcut Controller (press q to quit)", frame)
@@ -415,6 +455,14 @@ class GestureController:
             cv2.destroyAllWindows()
         if self.stt_proc and self.stt_proc.poll() is None:
             self.stt_proc.terminate()
+        if self.eleven_proc and self.eleven_proc.poll() is None:
+            self.eleven_proc.terminate()
+
+    def is_stt_active(self):
+        return self.stt_proc is not None and self.stt_proc.poll() is None
+
+    def is_eleven_active(self):
+        return self.eleven_proc is not None and self.eleven_proc.poll() is None
 
 
 def main():
