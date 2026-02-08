@@ -238,6 +238,7 @@ class GestureController:
 
         self.open_palm_active = False
         self.stt_proc = None
+        self._config_mtime = None
         self.peace_active = False
         self.eleven_proc = None
 
@@ -256,6 +257,17 @@ class GestureController:
         def _handle_start_stt():
             self.stt_proc = start_stt(self.stt_proc)
 
+        def _handle_open_buddy():
+            app_path = BASE_DIR / "desktop-pet" / "config_app.py"
+            if app_path.exists():
+                try:
+                    subprocess.Popen([sys.executable, str(app_path)])
+                except Exception:
+                    return
+
+        self.dispatch = {
+            "start_stt": _handle_start_stt,
+            "open_buddy": _handle_open_buddy,
         def _handle_start_eleven():
             if self.eleven_proc and self.eleven_proc.poll() is None:
                 return
@@ -278,6 +290,34 @@ class GestureController:
             "noop": _noop,
         }
 
+        self._apply_config(force=True)
+
+    def _apply_config(self, force=False):
+        try:
+            mtime = CONFIG_PATH.stat().st_mtime
+        except OSError:
+            mtime = None
+        if not force and mtime == self._config_mtime:
+            return
+        self._config_mtime = mtime
+
+        configured = _load_action_map()
+        # Reset to no-op defaults so config is the single source of truth.
+        self.actions = {
+            "double_blink": None,
+            "blink_hold": None,
+            "open_palm": None,
+            "wave": None,
+        }
+        if not configured:
+            return
+        for gesture, action_key in configured.items():
+            if gesture == "blink_twice":
+                gesture = "double_blink"
+            elif gesture == "hold":
+                gesture = "blink_hold"
+            self.actions[gesture] = _resolve_action(action_key)
+
     def run_action(self, key: str):
         action = self.actions.get(key)
         if action is None:
@@ -290,6 +330,7 @@ class GestureController:
             handler()
 
     def step(self):
+        self._apply_config()
         # If any audio pipeline is active, do not detect/trigger gestures.
         if self.is_stt_active() or self.is_eleven_active():
             time.sleep(0.01)

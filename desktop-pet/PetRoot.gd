@@ -81,11 +81,22 @@ func _launch_config_app():
 	last_launch_ms = now
 
 	var script_path = ProjectSettings.globalize_path(CONFIG_APP_REL)
-	var pid = OS.create_process("python", [script_path])
+	var py_path = _resolve_python_path()
+	var pid = OS.create_process(py_path, [script_path])
 	if pid == -1:
-		pid = OS.create_process("py", [script_path])
+		pid = OS.create_process("python", [script_path])
 		if pid == -1:
-			push_warning("Failed to launch config app. Ensure Python is on PATH.")
+			pid = OS.create_process("py", [script_path])
+			if pid == -1:
+				push_warning("Failed to launch config app. Ensure Python is on PATH.")
+
+func _resolve_python_path() -> String:
+	# Prefer local venv if present.
+	var base_dir = ProjectSettings.globalize_path("res://..")
+	var venv_py = base_dir.path_join("venv311").path_join("Scripts").path_join("python.exe")
+	if FileAccess.file_exists(venv_py):
+		return venv_py
+	return "python"
 
 func _apply_idle(dt):
 	if not idle_target:

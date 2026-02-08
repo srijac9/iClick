@@ -138,8 +138,10 @@ celerybeat.pid
 .env
 .envrc
 .venv
+.venv311/
 env/
 venv/
+venv311/
 ENV/
 env.bak/
 venv.bak/
@@ -213,3 +215,6 @@ desktop-pet/data_desktop_pet_windows_x86_64/
 desktop-pet/*.pck
 desktop-pet/*.exe
 desktop-pet/*.TMP
+
+# Node / frontend
+ui/node_modules/

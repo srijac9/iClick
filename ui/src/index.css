@@ -1,0 +1,134 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap');
+
+@layer base {
+  :root {
+    --background: 120 20% 10%;
+    --foreground: 90 30% 90%;
+
+    --card: 120 15% 16%;
+    --card-foreground: 90 30% 90%;
+
+    --popover: 120 15% 16%;
+    --popover-foreground: 90 30% 90%;
+
+    --primary: 130 55% 45%;
+    --primary-foreground: 120 20% 98%;
+
+    --secondary: 120 20% 22%;
+    --secondary-foreground: 90 30% 85%;
+
+    --muted: 120 12% 20%;
+    --muted-foreground: 100 15% 55%;
+
+    --accent: 80 60% 50%;
+    --accent-foreground: 120 20% 10%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 120 15% 25%;
+    --input: 120 15% 25%;
+    --ring: 130 55% 45%;
+
+    --radius: 0.75rem;
+
+    --vine: 130 40% 30%;
+    --vine-light: 110 45% 55%;
+    --soil: 30 25% 15%;
+    --leaf: 100 50% 40%;
+    --seed: 45 50% 55%;
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+    font-family: 'Nunito', sans-serif;
+    overflow: hidden;
+  }
+}
+
+/* Vine decorative borders */
+.vine-border {
+  position: relative;
+}
+
+.vine-border::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg,
+    hsl(130 55% 45% / 0),
+    hsl(130 55% 45%),
+    hsl(100 50% 40%),
+    hsl(130 55% 45%),
+    hsl(130 55% 45% / 0)
+  );
+  border-radius: 999px;
+}
+
+.vine-border::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  opacity: 0.7;
+  background: linear-gradient(90deg,
+    hsl(130 55% 45% / 0),
+    hsl(130 55% 45%),
+    hsl(100 50% 40%),
+    hsl(130 55% 45%),
+    hsl(130 55% 45% / 0)
+  );
+  border-radius: 999px;
+}
+
+@keyframes sway {
+  0%, 100% { transform: rotate(-2deg); }
+  50% { transform: rotate(2deg); }
+}
+
+@keyframes grow {
+  from { transform: scaleY(0); opacity: 0; }
+  to { transform: scaleY(1); opacity: 1; }
+}
+
+@keyframes leaf-appear {
+  from { transform: scale(0) rotate(-45deg); opacity: 0; }
+  to { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+.animate-sway {
+  animation: sway 3s ease-in-out infinite;
+}
+
+.animate-grow {
+  animation: grow 0.6s ease-out forwards;
+  transform-origin: bottom;
+}
+
+.animate-leaf {
+  animation: leaf-appear 0.4s ease-out forwards;
+}
