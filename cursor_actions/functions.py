@@ -3,7 +3,7 @@ import time
 
 pyautogui.FAILSAFE = True
 
-def move_cursor(x, y, duration=0.25):
+def move_cursor(x, y, duration=0.05):
     pyautogui.moveTo(x, y, duration=duration)
 
 def left_click():

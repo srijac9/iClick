@@ -36,7 +36,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.ensemble import GradientBoostingRegressor
 import joblib
 
-df = pd.read_csv("eye_calibration_x.csv")
+df = pd.read_csv("eye_calibration.csv")
 
 # Use consistent features
 X_x = df[["left_ratio_x", "right_ratio_x", "avg_ratio_x", "avg_width", "normalized_x"]].values
@@ -66,5 +66,5 @@ errors = np.abs(y_pred - y_test)
 for p in percentiles:
     print(f"{p}th percentile error: {np.percentile(errors, p):.2f} pixels")
 
-joblib.dump(model_x, "gaze_model_x.pkl")
-print("Model saved as gaze_model_x.pkl")
+joblib.dump(model_x, "gaze_model.pkl")
+print("Model saved as gaze_model.pkl")

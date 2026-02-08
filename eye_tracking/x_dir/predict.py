@@ -51,13 +51,25 @@
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
 import joblib
 import numpy as np
 from collections import deque
 import os
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-model_path = os.path.join(HERE, "gaze_model_x.pkl")
+model_path = os.path.join(HERE, "gaze_model.pkl")
 
 model_x = joblib.load(model_path)
 
