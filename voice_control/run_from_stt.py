@@ -122,6 +122,8 @@ def main():
     last_command_text = ""
     last_action_text = ""
     wake_armed_until = 0.0
+    blocked_text = ""
+    blocked_active = False
     try:
         sel = selectors.DefaultSelector()
         sel.register(sys.stdin, selectors.EVENT_READ)
@@ -149,7 +151,8 @@ def main():
                     if not session_text:
                         session_text = last_with_wake or last_cleaned
                     if session_text:
-                        _trigger_if_ready(
+                        if not (blocked_active and session_text == blocked_text):
+                            triggered, last_command, last_time = _trigger_if_ready(
                             session_text,
                             last_command,
                             last_time,
@@ -157,7 +160,10 @@ def main():
                             wake_armed_until,
                             last_command_text,
                             last_action_text,
-                        )
+                            )
+                            if triggered:
+                                blocked_active = True
+                                blocked_text = session_text
                     break
                 try:
                     sys.stdout.buffer.write(chunk)
@@ -175,6 +181,8 @@ def main():
                     if phrase:
                         cleaned = _clean_phrase(phrase)
                         if cleaned:
+                            if blocked_active and cleaned != blocked_text:
+                                blocked_active = False
                             if DEBUG:
                                 print(f"run_from_stt: cleaned -> {cleaned}", flush=True)
                             # STT final lines are cumulative; keep the latest only.
@@ -192,17 +200,21 @@ def main():
                             if line.strip().startswith(FINAL_PREFIXES):
                                 if DEBUG:
                                     print(f"run_from_stt: final line -> {cleaned}", flush=True)
-                                triggered, last_command, last_time = _trigger_if_ready(
-                                    session_text,
-                                    last_command,
-                                    last_time,
-                                    now,
-                                    wake_armed_until,
-                                    last_command_text,
-                                    last_action_text,
-                                )
-                                if triggered:
-                                    print("run_from_stt: triggered on final", flush=True)
+                                if not (blocked_active and session_text == blocked_text):
+                                    triggered, last_command, last_time = _trigger_if_ready(
+                                        session_text,
+                                        last_command,
+                                        last_time,
+                                        now,
+                                        wake_armed_until,
+                                        last_command_text,
+                                        last_action_text,
+                                    )
+                                    if triggered:
+                                        blocked_active = True
+                                        blocked_text = session_text
+                                        session_text = ""
+                                        print("run_from_stt: triggered on final", flush=True)
             # Trigger on silence after last update (for continuous streams).
             if session_text and (now - last_update) >= SILENCE_TRIGGER_SECONDS:
                 if DEBUG:
@@ -210,19 +222,22 @@ def main():
                         f"run_from_stt: silence trigger -> {session_text}",
                         flush=True,
                     )
-                triggered, last_command, last_time = _trigger_if_ready(
-                    session_text,
-                    last_command,
-                    last_time,
-                    now,
-                    wake_armed_until,
-                    last_command_text,
-                    last_action_text,
-                )
-                if triggered:
-                    print("run_from_stt: triggered on silence", flush=True)
-                    # Prevent repeated triggers without new speech.
-                    session_text = ""
+                if not (blocked_active and session_text == blocked_text):
+                    triggered, last_command, last_time = _trigger_if_ready(
+                        session_text,
+                        last_command,
+                        last_time,
+                        now,
+                        wake_armed_until,
+                        last_command_text,
+                        last_action_text,
+                    )
+                    if triggered:
+                        blocked_active = True
+                        blocked_text = session_text
+                        print("run_from_stt: triggered on silence", flush=True)
+                        # Prevent repeated triggers without new speech.
+                        session_text = ""
             # No action while streaming. Action triggers on EOF after auto-stop.
     except KeyboardInterrupt:
         pass
