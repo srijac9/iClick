@@ -14,6 +14,12 @@ def on_speech_recognized(text: str):
 
     if intent:
         result = execute(intent, target)
-        print(result)
+        if result is not None:
+            print(result)
     else:
         print("No recognizable command")
+
+
+if __name__ == "__main__":
+    # Simple manual test
+    on_speech_recognized("open gmail")

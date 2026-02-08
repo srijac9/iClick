@@ -32,7 +32,7 @@ CHANNELS = 1
 DTYPE = "float32"
 CHUNK_MS = 80
 CHUNK_SAMPLES = int(SAMPLE_RATE * CHUNK_MS / 1000)
-SILENCE_THRESHOLD = 0.01  # RMS threshold to detect silence
+SILENCE_THRESHOLD = 0.02  # RMS threshold to detect silence (higher = more sensitive)
 SILENCE_LIMIT = 2.0       # seconds of silence before auto-stop
 
 # Type into focused window: set to False to only print in terminal

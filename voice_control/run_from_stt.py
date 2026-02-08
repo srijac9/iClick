@@ -12,7 +12,9 @@ from voice_control.main import on_speech_recognized
 
 
 PREFIXES = ("📝 ", "📝", "🗣️ ", "🗣️")
+FINAL_PREFIXES = ("🗣️ ", "🗣️")
 WAKE_WORD = "hey buddy"
+DEBUG = os.getenv("RUN_FROM_STT_DEBUG", "0") == "1"
 DEBOUNCE_SECONDS = 2.0
 SILENCE_TRIGGER_SECONDS = 2.0
 WAKE_ARM_SECONDS = 20.0
@@ -82,6 +84,8 @@ def _find_command(cleaned: str):
         return None, None
     target = " ".join(parts[last_idx + 1:]).strip()
     if last_cmd in ("search", "find", "lookup"):
+        if target.startswith("for "):
+            target = target[len("for "):].strip()
         return "search", target
     if last_cmd == "play":
         if target.startswith("song "):
@@ -89,8 +93,13 @@ def _find_command(cleaned: str):
         return "play", target
     if last_cmd == "scroll":
         return "scroll", target or "down"
-    if last_cmd == "set" and target.startswith("reminder"):
-        return "reminder", target[len("reminder"):].strip()
+    if last_cmd == "set":
+        if target.startswith("a reminder "):
+            return "reminder", target[len("a reminder "):].strip()
+        if target.startswith("an reminder "):
+            return "reminder", target[len("an reminder "):].strip()
+        if target.startswith("reminder "):
+            return "reminder", target[len("reminder "):].strip()
     if last_cmd == "remind":
         if target.startswith("me"):
             return "reminder", target[len("me"):].strip()
@@ -103,6 +112,7 @@ def _find_command(cleaned: str):
 
 
 def main():
+    print("run_from_stt: ready", flush=True)
     last_command = None
     last_time = 0.0
     last_update = 0.0
@@ -120,7 +130,7 @@ def main():
             events = sel.select(timeout=0.1)
             now = time.time()
             if events:
-                chunk = sys.stdin.buffer.read(1024)
+                chunk = sys.stdin.buffer.readline()
                 if not chunk:
                     # EOF: process any pending buffered line, then trigger.
                     if buffer.strip():
@@ -159,10 +169,14 @@ def main():
                 lines = buffer.split("\n")
                 buffer = lines.pop()
                 for line in lines:
+                    if DEBUG:
+                        print(f"run_from_stt: raw line -> {line.strip()}", flush=True)
                     phrase = _extract_phrase(line)
                     if phrase:
                         cleaned = _clean_phrase(phrase)
                         if cleaned:
+                            if DEBUG:
+                                print(f"run_from_stt: cleaned -> {cleaned}", flush=True)
                             # STT final lines are cumulative; keep the latest only.
                             session_text = cleaned
                             last_update = now
@@ -174,6 +188,41 @@ def main():
                             if "buddy" in cleaned or ("hey" in cleaned and "buddy" in cleaned):
                                 wake_armed_until = now + WAKE_ARM_SECONDS
                                 last_with_wake = cleaned
+                            # If this is a final line, trigger immediately (no EOF required).
+                            if line.strip().startswith(FINAL_PREFIXES):
+                                if DEBUG:
+                                    print(f"run_from_stt: final line -> {cleaned}", flush=True)
+                                triggered, last_command, last_time = _trigger_if_ready(
+                                    session_text,
+                                    last_command,
+                                    last_time,
+                                    now,
+                                    wake_armed_until,
+                                    last_command_text,
+                                    last_action_text,
+                                )
+                                if triggered:
+                                    print("run_from_stt: triggered on final", flush=True)
+            # Trigger on silence after last update (for continuous streams).
+            if session_text and (now - last_update) >= SILENCE_TRIGGER_SECONDS:
+                if DEBUG:
+                    print(
+                        f"run_from_stt: silence trigger -> {session_text}",
+                        flush=True,
+                    )
+                triggered, last_command, last_time = _trigger_if_ready(
+                    session_text,
+                    last_command,
+                    last_time,
+                    now,
+                    wake_armed_until,
+                    last_command_text,
+                    last_action_text,
+                )
+                if triggered:
+                    print("run_from_stt: triggered on silence", flush=True)
+                    # Prevent repeated triggers without new speech.
+                    session_text = ""
             # No action while streaming. Action triggers on EOF after auto-stop.
     except KeyboardInterrupt:
         pass
