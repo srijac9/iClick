@@ -1,11 +1,16 @@
 [
   {
     "gesture": "blink_twice",
-    "action": "open_buddy",
+    "action": "right_click",
     "args": {}
   },
   {
     "gesture": "hold",
+    "action": "open_buddy",
+    "args": {}
+  },
+  {
+    "gesture": "wave",
     "action": "typing",
     "args": {}
   }
