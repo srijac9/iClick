@@ -73,14 +73,22 @@ def get_eye_features(landmarks, image_shape):
     right_ratio_x = (right_iris[0] - right_inner[0]) / right_width
     right_ratio_y = (right_iris[1] - right_top[1]) / right_height
 
-    # Head pitch via nose
-    eye_mid = (left_iris + right_iris) / 2
-    nose = lm_to_pixel(landmarks[NOSE])
-    pitch = eye_mid[1] - nose[1]
+   # X features
+    avg_ratio_x = (left_ratio_x + right_ratio_x) / 2
+    avg_width = (left_width + right_width) / 2
+    eye_distance = np.linalg.norm(left_iris - right_iris)
+    eye_center_x = (left_iris[0] + right_iris[0]) / 2
+    normalized_x = eye_center_x / w
+    
+    # Y features
+    avg_ratio_y = (left_ratio_y + right_ratio_y) / 2
+    avg_height = (left_height + right_height) / 2
+    eye_center_y = (left_iris[1] + right_iris[1]) / 2
+    normalized_y = eye_center_y / h
 
     return {
-        "x": [left_ratio_x, right_ratio_x],
-        "y": [left_ratio_y, right_ratio_y, left_height, right_height],
+        'x': [left_ratio_x, right_ratio_x, avg_ratio_x, avg_width, normalized_x],
+        'y': [left_ratio_y, right_ratio_y, avg_ratio_y, avg_height, normalized_y]
     }
 
 # -------------------------------
