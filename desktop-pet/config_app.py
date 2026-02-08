@@ -53,8 +53,8 @@ def _load_action_map() -> Dict[str, str]:
 
 
 class SingleInstance:
-    def __init__(self, on_close):
-        self.on_close = on_close
+    def __init__(self, on_signal):
+        self.on_signal = on_signal
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
             self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
@@ -73,7 +73,8 @@ class SingleInstance:
             try:
                 client, _ = self.sock.accept()
                 client.close()
-                self.on_close()
+                if self.on_signal:
+                    self.on_signal()
             except OSError:
                 break
 
@@ -111,16 +112,21 @@ def _ui_url():
 def main():
     window_ref = {"window": None}
 
-    def on_close_signal():
+    def on_signal():
         win = window_ref["window"]
-        if win:
-            try:
-                win.evaluate_js("window.__iclickSaveConfig && window.__iclickSaveConfig()")
-            except Exception:
-                pass
-            win.destroy()
+        if not win:
+            return
+        try:
+            win.evaluate_js("window.__iclickSaveConfig && window.__iclickSaveConfig()")
+        except Exception:
+            pass
+        # Best-effort focus in the webview context.
+        try:
+            win.evaluate_js("window.focus && window.focus()")
+        except Exception:
+            pass
 
-    locker = SingleInstance(on_close_signal)
+    locker = SingleInstance(on_signal)
     if not locker.try_lock():
         if SingleInstance.signal_existing():
             return

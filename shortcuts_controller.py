@@ -267,7 +267,9 @@ class GestureController:
 
         self.dispatch = {
             "start_stt": _handle_start_stt,
-            "open_buddy": _handle_open_buddy,
+            "open_buddy": _handle_open_buddy
+        }
+        
         def _handle_start_eleven():
             if self.eleven_proc and self.eleven_proc.poll() is None:
                 return

@@ -10,6 +10,11 @@
     "args": {}
   },
   {
+    "gesture": "open_palm",
+    "action": "left_click",
+    "args": {}
+  },
+  {
     "gesture": "wave",
     "action": "typing",
     "args": {}
