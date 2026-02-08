@@ -1,4 +1,5 @@
 import os
+import re
 import time
 import subprocess
 
@@ -29,6 +30,54 @@ def _run_osascript(script: str):
         return True
     except Exception:
         return False
+
+
+def _keystroke(key: str, modifiers=None):
+    modifiers = modifiers or []
+    if modifiers:
+        mod = " using " + " ".join(f"{m} down" for m in modifiers)
+    else:
+        mod = ""
+    script = f'tell application "System Events" to keystroke "{key}"{mod}'
+    return _run_osascript(script)
+
+
+def _key_code(code: int, modifiers=None):
+    modifiers = modifiers or []
+    if modifiers:
+        mod = " using " + " ".join(f"{m} down" for m in modifiers)
+    else:
+        mod = ""
+    script = f"tell application \"System Events\" to key code {code}{mod}"
+    return _run_osascript(script)
+
+
+def _get_output_volume():
+    try:
+        out = subprocess.check_output(["osascript", "-e", "output volume of (get volume settings)"])
+        return int(out.decode().strip())
+    except Exception:
+        return None
+
+
+def _set_output_volume(value: int):
+    value = max(0, min(100, int(value)))
+    return _run_osascript(f"set volume output volume {value}")
+
+
+def _set_output_mute(muted: bool):
+    flag = "true" if muted else "false"
+    return _run_osascript(f"set volume output muted {flag}")
+
+
+def _parse_volume_value(value: str):
+    if not value:
+        return None
+    m = re.search(r"\d+", value)
+    if not m:
+        return None
+    v = int(m.group())
+    return max(0, min(100, v))
 
 
 def _open_chrome():
@@ -264,9 +313,76 @@ def run_scroll(direction: str):
     return f"Scrolled {direction or 'down'}"
 
 
+def run_page_scroll(direction: str):
+    direction = (direction or "").lower()
+    amount = -1500 if direction == "down" else 1500
+    pyautogui.scroll(amount)
+    return f"Page scrolled {direction or 'down'}"
+
+
+def run_scroll_top():
+    # Large scroll up to approximate top.
+    pyautogui.scroll(4000)
+    return "Scrolled to top"
+
+
+def run_scroll_bottom():
+    pyautogui.scroll(-4000)
+    return "Scrolled to bottom"
+
+
+def run_volume_change(direction: str):
+    direction = (direction or "").lower()
+    current = _get_output_volume()
+    if current is None:
+        # Fallback: pick a reasonable target if we can't read current volume.
+        target = 60 if direction == "up" else 40
+        _set_output_volume(target)
+        return f"Volume set to {target}"
+    step = 10
+    if direction == "up":
+        target = min(100, current + step)
+    elif direction == "down":
+        target = max(0, current - step)
+    else:
+        target = current
+    _set_output_volume(target)
+    return f"Volume set to {target}"
+
+
+def run_volume_set(value: str):
+    parsed = _parse_volume_value(value)
+    if parsed is None:
+        return "No action taken"
+    _set_output_volume(parsed)
+    return f"Volume set to {parsed}"
+
+
+def run_mute(muted: bool):
+    _set_output_mute(muted)
+    return "Muted" if muted else "Unmuted"
+
+
 def run_calendar_open():
     _run_osascript('tell application "Calendar" to activate')
     return "Opened Calendar"
+
+
+def run_calendar_add(text: str):
+    title = text.strip() if text else ""
+    if not title:
+        title = "Meeting"
+    escaped = title.replace('"', '\\"')
+    script = (
+        'tell application "Calendar"\n'
+        "  activate\n"
+        "  set startDate to (current date) + 300\n"
+        "  set endDate to startDate + 3600\n"
+        "  tell calendar 1 to make new event with properties {summary:\"%s\", start date:startDate, end date:endDate}\n"
+        "end tell"
+    ) % escaped
+    _run_osascript(script)
+    return f"Scheduled meeting: {title}"
 
 
 def run_set_reminder(text: str):
@@ -280,3 +396,76 @@ def run_set_reminder(text: str):
     )
     _run_osascript(script)
     return f"Set reminder: {text}"
+
+
+def run_sleep():
+    _run_osascript('tell application "System Events" to sleep')
+    return "Sleeping"
+
+
+def run_lock_screen():
+    _run_osascript('tell application "System Events" to keystroke "q" using {command down, control down}')
+    return "Locked screen"
+
+
+def run_minimize_window():
+    _keystroke("m", ["command"])
+    return "Minimized window"
+
+
+def run_fullscreen():
+    _keystroke("f", ["control", "command"])
+    return "Toggled fullscreen"
+
+
+def run_back():
+    _keystroke("[", ["command"])
+    return "Back"
+
+
+def run_forward():
+    _keystroke("]", ["command"])
+    return "Forward"
+
+
+def run_select_all():
+    _keystroke("a", ["command"])
+    return "Selected all"
+
+
+def run_copy():
+    _keystroke("c", ["command"])
+    return "Copied"
+
+
+def run_paste():
+    _keystroke("v", ["command"])
+    return "Pasted"
+
+
+def run_cut():
+    _keystroke("x", ["command"])
+    return "Cut"
+
+
+def run_undo():
+    _keystroke("z", ["command"])
+    return "Undo"
+
+
+def run_redo():
+    _keystroke("z", ["command", "shift"])
+    return "Redo"
+
+
+def run_delete():
+    _key_code(51)
+    return "Deleted"
+
+
+def run_type_text(text: str):
+    if not text:
+        return "No action taken"
+    escaped = text.replace('"', '\\"')
+    _run_osascript(f'tell application "System Events" to keystroke "{escaped}"')
+    return f"Typed: {text}"

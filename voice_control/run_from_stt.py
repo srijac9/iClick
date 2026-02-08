@@ -28,17 +28,17 @@ def _extract_phrase(line: str):
         if line.startswith(p):
             return line[len(p):].strip()
     lowered = line.lower()
-    if any(k in lowered for k in ("buddy", "hey", "open", "search", "play", "scroll", "remind", "reminder")):
+    if any(k in lowered for k in ("buddy", "hey", "open", "search", "play", "scroll", "remind", "reminder", "volume", "mute", "unmute", "pause", "resume", "next", "previous", "prev")):
         return line
     return None
 
 
 def _clean_phrase(text: str):
-    # Keep only a-z and spaces so STT artifacts don't break parsing.
+    # Keep only a-z, digits, and spaces so STT artifacts don't break parsing.
     cleaned = []
     last_space = False
     for ch in text.lower():
-        if "a" <= ch <= "z":
+        if "a" <= ch <= "z" or "0" <= ch <= "9":
             cleaned.append(ch)
             last_space = False
         elif ch.isspace():
@@ -77,7 +77,7 @@ def _find_command(cleaned: str):
     last_idx = -1
     last_cmd = None
     for i, w in enumerate(parts):
-        if w in ("open", "search", "find", "lookup", "play", "scroll", "set", "remind", "stop"):
+        if w in ("open", "search", "find", "lookup", "play", "scroll", "set", "remind", "stop", "volume", "mute", "unmute", "pause", "resume", "next", "previous", "prev"):
             last_idx = i
             last_cmd = w
     if last_idx == -1:
@@ -93,6 +93,25 @@ def _find_command(cleaned: str):
         return "play", target
     if last_cmd == "scroll":
         return "scroll", target or "down"
+    if last_cmd == "volume":
+        target = target.strip()
+        if target.startswith("to "):
+            return "volume_set", target[len("to "):].strip()
+        if target.startswith("set "):
+            return "volume_set", target[len("set "):].strip()
+        if target.startswith("up"):
+            return "volume", "up"
+        if target.startswith("down"):
+            return "volume", "down"
+        if target and target.split()[0].isdigit():
+            return "volume_set", target.split()[0]
+        return "volume", target
+    if last_cmd in ("mute", "unmute"):
+        return last_cmd, ""
+    if last_cmd in ("pause", "resume"):
+        return last_cmd, ""
+    if last_cmd in ("next", "previous", "prev"):
+        return ("media_next" if last_cmd == "next" else "media_prev"), ""
     if last_cmd == "set":
         if target.startswith("a reminder "):
             return "reminder", target[len("a reminder "):].strip()

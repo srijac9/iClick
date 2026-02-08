@@ -1,11 +1,13 @@
+import argparse
 import asyncio
 import base64
 import json
 import os
+import time
 import urllib.error
 import urllib.request
+
 import pyaudio
-import time
 import websockets
 from websockets.exceptions import ConnectionClosed
 from dotenv import load_dotenv
@@ -44,7 +46,29 @@ RATE = 16000
 CHUNK = 1024
 SILENCE_LIMIT = 2.0  # seconds without transcript updates before auto-stop
 
-async def main():
+
+def _strip_wake_word(text: str, wake_word: str):
+    if not text:
+        return text
+    if not wake_word:
+        return text
+    lowered = text.lower()
+    ww = wake_word.lower()
+    if ww not in lowered:
+        # Fallback: strip a leading "buddy" if present
+        if lowered.startswith("buddy "):
+            return text[len("buddy "):].strip(" ,.")
+        return text
+    # Use the last occurrence to allow phrases like "hey buddy ... hey buddy ...".
+    idx = lowered.rfind(ww)
+    return text[idx + len(ww):].strip(" ,.")
+
+async def main(execute_intents: bool, wake_word: str):
+    on_speech_recognized = None
+    if execute_intents:
+        from voice_control.main import on_speech_recognized as _on_speech_recognized
+        on_speech_recognized = _on_speech_recognized
+        print("🧠 Intent execution enabled", flush=True)
     while True:
         try:
             token = _create_single_use_token()
@@ -113,6 +137,10 @@ async def main():
                                 else:
                                     state["last_committed"] = text
                                     print(f"🗣️ {text}", flush=True)
+                                    if on_speech_recognized:
+                                        command = _strip_wake_word(text, wake_word)
+                                        if command:
+                                            on_speech_recognized(command)
                             continue
                         # Surface any errors or unexpected messages
                         if msg_type and "error" in msg_type:
@@ -134,4 +162,8 @@ async def main():
             await asyncio.sleep(1.0)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--execute", action="store_true", help="Execute intents on committed transcripts")
+    parser.add_argument("--wake-word", default="hey buddy", help="Wake word to strip before intent parsing")
+    args = parser.parse_args()
+    asyncio.run(main(args.execute, args.wake_word))

@@ -273,13 +273,11 @@ class GestureController:
                 return
             cmd = (
                 "source .env && "
-                "python -u eleven_stt.py | tee /dev/tty | python -u voice_control/run_from_stt.py"
+                "python -u eleven_stt.py --execute"
             )
             try:
                 self.eleven_proc = subprocess.Popen(
                     ["/bin/bash", "-lc", cmd],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
                 )
             except Exception:
                 return
