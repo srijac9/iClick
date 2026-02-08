@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Sprout,
   Hand,
@@ -57,7 +57,8 @@ function toSavePayload(mappings: MappingState) {
 export default function GestureGrid() {
   const [mappings, setMappings] = useState<MappingState>(DEFAULT_MAP);
   const [status, setStatus] = useState<string>("");
-  const saveTimer = useRef<number | null>(null);
+  const [dirty, setDirty] = useState<boolean>(false);
+  const [saving, setSaving] = useState<boolean>(false);
 
   useEffect(() => {
     let mounted = true;
@@ -81,8 +82,30 @@ export default function GestureGrid() {
     };
   }, []);
 
+  const saveNow = async () => {
+    try {
+      const api = window.pywebview?.api;
+      if (!api) {
+        setStatus("Save unavailable");
+        window.setTimeout(() => setStatus(""), 1800);
+        return;
+      }
+      setSaving(true);
+      await api.save_mappings(toSavePayload(mappings));
+      setDirty(false);
+      setStatus("Saved");
+      window.setTimeout(() => setStatus(""), 1200);
+    } catch (_e) {
+      setStatus("Save failed");
+      window.setTimeout(() => setStatus(""), 1800);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   useEffect(() => {
     const onBeforeUnload = async () => {
+      if (!dirty) return;
       try {
         const api = window.pywebview?.api;
         if (!api) return;
@@ -93,39 +116,11 @@ export default function GestureGrid() {
     };
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [mappings]);
-
-  useEffect(() => {
-    if (!window.pywebview?.api) return;
-    if (saveTimer.current) {
-      window.clearTimeout(saveTimer.current);
-    }
-    saveTimer.current = window.setTimeout(async () => {
-      try {
-        await window.pywebview?.api.save_mappings(toSavePayload(mappings));
-        setStatus("Saved");
-        window.setTimeout(() => setStatus(""), 1200);
-      } catch (_e) {
-        setStatus("Save failed");
-        window.setTimeout(() => setStatus(""), 1800);
-      }
-    }, 200);
-    return () => {
-      if (saveTimer.current) {
-        window.clearTimeout(saveTimer.current);
-      }
-    };
-  }, [mappings]);
+  }, [mappings, dirty]);
 
   useEffect(() => {
     window.__iclickSaveConfig = async () => {
-      try {
-        const api = window.pywebview?.api;
-        if (!api) return;
-        await api.save_mappings(toSavePayload(mappings));
-      } catch (_e) {
-        // ignore
-      }
+      await saveNow();
     };
     return () => {
       delete window.__iclickSaveConfig;
@@ -133,11 +128,11 @@ export default function GestureGrid() {
   }, [mappings]);
 
   const handleSelect = (gesture: string, action: string) => {
-    setMappings((prev) => {
-      let next: MappingState;
-      if (prev[gesture] === action) {
-        next = { ...prev, [gesture]: null };
-      } else {
+      setMappings((prev) => {
+        let next: MappingState;
+        if (prev[gesture] === action) {
+          next = { ...prev, [gesture]: null };
+        } else {
         next = { ...prev };
         for (const g of GESTURES) {
           if (next[g.id] === action) next[g.id] = null;
@@ -145,24 +140,7 @@ export default function GestureGrid() {
         next[gesture] = action;
       }
 
-      try {
-        const api = window.pywebview?.api;
-        if (api) {
-          api.save_mappings(toSavePayload(next)).then(
-            () => {
-              setStatus("Saved");
-              window.setTimeout(() => setStatus(""), 1200);
-            },
-            () => {
-              setStatus("Save failed");
-              window.setTimeout(() => setStatus(""), 1800);
-            }
-          );
-        }
-      } catch (_e) {
-        // ignore
-      }
-
+        setDirty(true);
       return next;
     });
   };
@@ -249,8 +227,20 @@ export default function GestureGrid() {
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <Sprout className="w-4 h-4 text-leaf animate-sway" />
               <span>iClick Shortcut Config</span>
+              {dirty && <span className="ml-2 text-xs text-vine-light">Unsaved</span>}
               {statusText && <span className="ml-2 text-xs text-accent">{statusText}</span>}
             </div>
+            <button
+              onClick={saveNow}
+              disabled={!dirty || saving}
+              className={`px-4 py-2 text-xs font-semibold rounded-lg border transition-all ${
+                !dirty || saving
+                  ? "bg-muted text-muted-foreground border-border cursor-not-allowed"
+                  : "bg-primary text-primary-foreground border-primary hover:shadow-lg hover:shadow-primary/30"
+              }`}
+            >
+              {saving ? "Saving..." : "Save"}
+            </button>
           </div>
         </div>
       </div>
