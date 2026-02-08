@@ -285,5 +285,5 @@ columns = [
     "screen_x", "screen_y"
 ]
 df = pd.DataFrame(dataset_x, columns=columns)
-df.to_csv("eye_calibration_x.csv", index=False)
-print(f"Saved {len(df)} calibration samples to eye_calibration_x.csv")
+df.to_csv("eye_calibration.csv", index=False)
+print(f"Saved {len(df)} calibration samples to eye_calibration.csv")
